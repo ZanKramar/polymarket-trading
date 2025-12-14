@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python debug_api.py:*)",
+      "Bash(venvScriptspython.exe debug_api.py)",
+      "Bash(\"venv\\Scripts\\python.exe\" debug_api.py)",
+      "Bash(\"venv\\Scripts\\python.exe\" main.py)",
+      "Bash(copy .env.example .env)",
+      "Bash(\"venv\\Scripts\\pip.exe\" list)",
+      "Bash(findstr:*)",
+      "Bash(\"venv\\Scripts\\python.exe\" btc_15min_bot.py)",
+      "WebSearch",
+      "WebFetch(domain:docs.polymarket.com)",
+      "Bash(\"venv\\Scripts\\python.exe\" test_btc_api.py)",
+      "WebFetch(domain:polymarket.com)",
+      "Bash(\"venv\\Scripts\\python.exe\" test_event_api.py)",
+      "Bash(\"venv\\Scripts\\python.exe\" test_clob_api.py)",
+      "Bash(\"venv\\Scripts\\python.exe\":*)",
+      "WebFetch(domain:github.com)",
+      "Bash(\"venv\\Scripts\\pip.exe\" install py-clob-client)",
+      "Bash(\"venv\\Scripts\\python.exe\" test_clob_client.py)",
+      "Bash(\"venv\\Scripts\\python.exe\" check_active_market.py)",
+      "Bash(\"venv\\Scripts\\pip.exe\" install websocket-client)",
+      "Bash(dir /B:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

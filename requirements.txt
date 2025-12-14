@@ -1,0 +1,10 @@
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# Polymarket integration (when ready to execute real trades)
+# py-clob-client>=0.1.0
+
+# Optional: for enhanced functionality
+# pandas>=2.0.0  # For data analysis
+# numpy>=1.24.0  # For numerical operations
