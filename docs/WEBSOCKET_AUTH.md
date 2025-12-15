@@ -271,13 +271,25 @@ client.stop()
 
 ## Current Status (in this repo)
 
-✅ Basic WebSocket connection working
-✅ Auto-reconnect implemented
-⚠️ Authentication not yet implemented
-⚠️ Falls back to REST API polling (every 30 seconds)
+❌ CLOB WebSocket (`wss://ws-subscriptions-clob.polymarket.com/ws/market`) - Connection drops immediately
+❌ Public WebSocket (`wss://ws-live-data.polymarket.com`) - Connection drops immediately
+✅ **REST API polling** - Working reliably (30-second interval)
+✅ Auto-reconnect implemented in WebSocket client
+✅ Fallback to REST API when WebSocket unavailable
 
-**Next Steps**:
-1. Generate API credentials using py-clob-client
-2. Add credentials to .env
-3. Update websocket_client.py with authentication
-4. Test with authenticated subscriptions
+**Findings from Testing**:
+1. Both WebSocket endpoints reject subscriptions (with and without auth)
+2. Credentials are loaded correctly from .env
+3. Authentication signature generated using HMAC-SHA256
+4. Server drops connection immediately after subscription attempt
+5. Zero messages received before disconnect
+
+**Possible Causes**:
+1. API credentials may need different generation method
+2. WebSocket subscription format may have changed
+3. Endpoints may require additional authentication steps
+4. Market data may only be available via REST API
+
+**Current Solution**:
+Using **REST API polling (every 30 seconds)** which is **sufficient for 15-minute markets**.
+WebSocket disabled by default (`use_websocket=False` in btc_15min_bot.py:44)
