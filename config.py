@@ -9,10 +9,6 @@ class Config:
     POLYMARKET_API_KEY: Optional[str] = os.getenv("POLYMARKET_API_KEY")
     POLYMARKET_PRIVATE_KEY: Optional[str] = os.getenv("POLYMARKET_PRIVATE_KEY")
 
-    # Polymarket CLOB WebSocket credentials (for real-time data)
-    POLYMARKET_API_SECRET: Optional[str] = os.getenv("POLYMARKET_API_SECRET")
-    POLYMARKET_API_PASSPHRASE: Optional[str] = os.getenv("POLYMARKET_API_PASSPHRASE")
-
     # Bot settings
     DRY_RUN: bool = os.getenv("DRY_RUN", "true").lower() == "true"
     CHECK_INTERVAL: int = int(os.getenv("CHECK_INTERVAL", "60"))  # seconds

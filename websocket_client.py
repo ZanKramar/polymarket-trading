@@ -37,13 +37,10 @@ class PolymarketWebSocketClient:
             api_secret: CLOB API secret (base64-encoded)
             api_passphrase: CLOB API passphrase
         """
-        # Option 1: Public WebSocket endpoint for real-time data
-        # Falls back to REST API if connection fails
-        self.ws_url = "wss://ws-live-data.polymarket.com"
+        self.ws_url = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
         self.ws = None
         self.subscribed_markets = set()
         self.price_cache: Dict[str, Dict[str, float]] = {}  # market_id -> {yes_price, no_price}
-        self.orderbook_cache: Dict[str, Dict[str, list]] = {}  # market_id -> {bids: [...], asks: [...]}
         self.on_price_update = on_price_update
         self.running = False
         self.thread = None
@@ -122,18 +119,6 @@ class PolymarketWebSocketClient:
                 bids = data.get('bids', [])
                 asks = data.get('asks', [])
 
-                # Store full orderbook
-                if market_id not in self.orderbook_cache:
-                    self.orderbook_cache[market_id] = {}
-
-                # Store bids and asks for this asset_id
-                asset_key = 'YES' if asset_id else 'NO'  # Simplified - may need better logic
-                self.orderbook_cache[market_id][asset_key] = {
-                    'bids': bids,
-                    'asks': asks,
-                    'last_update': datetime.utcnow()
-                }
-
                 if bids and asks:
                     best_bid = float(bids[0]['price']) if bids else 0.0
                     best_ask = float(asks[0]['price']) if asks else 0.0
@@ -148,9 +133,6 @@ class PolymarketWebSocketClient:
 
                     # Update cache
                     self.price_cache[market_id]['mid_price'] = mid_price
-                    self.price_cache[market_id]['best_bid'] = best_bid
-                    self.price_cache[market_id]['best_ask'] = best_ask
-                    self.price_cache[market_id]['spread'] = best_ask - best_bid
                     self.price_cache[market_id]['last_update'] = datetime.utcnow()
 
                     # Call callback if provided
@@ -302,21 +284,6 @@ class PolymarketWebSocketClient:
             Dictionary with price info or None
         """
         return self.price_cache.get(market_id)
-
-    def get_orderbook(self, market_id: str) -> Optional[Dict[str, dict]]:
-        """
-        Get latest cached orderbook for a market
-
-        Args:
-            market_id: Market ID
-
-        Returns:
-            Dictionary with orderbook data: {
-                'YES': {'bids': [...], 'asks': [...], 'last_update': ...},
-                'NO': {'bids': [...], 'asks': [...], 'last_update': ...}
-            } or None
-        """
-        return self.orderbook_cache.get(market_id)
 
     def stop(self):
         """Stop the WebSocket client"""
