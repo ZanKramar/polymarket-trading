@@ -17,11 +17,42 @@ class Market:
     no_price: float
     volume: float
     active: bool
+    orderbook: Optional[Dict] = None  # Orderbook data from WebSocket
 
     def time_until_close(self) -> float:
         """Returns hours until market closes"""
         delta = self.end_date - datetime.utcnow()
         return delta.total_seconds() / 3600
+
+    def get_spread(self, side: str = "YES") -> Optional[float]:
+        """Get bid-ask spread for a side"""
+        if not self.orderbook or side not in self.orderbook:
+            return None
+
+        bids = self.orderbook[side].get('bids', [])
+        asks = self.orderbook[side].get('asks', [])
+
+        if not bids or not asks:
+            return None
+
+        best_bid = float(bids[0]['price'])
+        best_ask = float(asks[0]['price'])
+        return best_ask - best_bid
+
+    def get_order_depth(self, side: str = "YES", levels: int = 5) -> Optional[Dict]:
+        """Get orderbook depth for top N levels"""
+        if not self.orderbook or side not in self.orderbook:
+            return None
+
+        bids = self.orderbook[side].get('bids', [])[:levels]
+        asks = self.orderbook[side].get('asks', [])[:levels]
+
+        return {
+            'bids': bids,
+            'asks': asks,
+            'bid_volume': sum(float(b.get('size', 0)) for b in bids),
+            'ask_volume': sum(float(a.get('size', 0)) for a in asks)
+        }
 
 
 @dataclass

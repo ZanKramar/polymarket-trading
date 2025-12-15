@@ -41,7 +41,8 @@ class BTC15MinBot:
         check_interval: int = 30,  # Check more frequently (30 seconds)
         dry_run: bool = True,
         max_markets: int = 4,  # Focus on next 4 markets
-        use_websocket: bool = True  # Enable real-time price updates
+        use_websocket: bool = True,  # Try WebSocket first, fallback to REST if it fails
+        websocket_timeout: int = 10  # Seconds to wait for WebSocket before falling back
     ):
         self.client = client
         self.strategies = strategies
@@ -50,10 +51,18 @@ class BTC15MinBot:
         self.max_markets = max_markets
         self.position_tracker = PositionTracker()
         self.use_websocket = use_websocket
+        self.websocket_timeout = websocket_timeout
+        self.websocket_healthy = False  # Track if WebSocket is actually working
 
         # Initialize WebSocket client for real-time price updates
         if use_websocket:
-            self.ws_client = PolymarketWebSocketClient(on_price_update=self._on_price_update)
+            from config import Config
+            self.ws_client = PolymarketWebSocketClient(
+                on_price_update=self._on_price_update,
+                api_key=Config.POLYMARKET_API_KEY,
+                api_secret=Config.POLYMARKET_API_SECRET,
+                api_passphrase=Config.POLYMARKET_API_PASSPHRASE
+            )
         else:
             self.ws_client = None
 
@@ -62,10 +71,14 @@ class BTC15MinBot:
         logger.info(f"  Check interval: {check_interval}s")
         logger.info(f"  Max markets to track: {max_markets}")
         logger.info(f"  Dry run: {dry_run}")
-        logger.info(f"  WebSocket enabled: {use_websocket}")
+        logger.info(f"  WebSocket: {'Try first (fallback to REST if fails)' if use_websocket else 'Disabled (REST API only)'}")
 
     def _on_price_update(self, market_id: str, yes_price: float, no_price: float):
         """Callback for WebSocket price updates"""
+        # Mark WebSocket as healthy when we receive data
+        if not self.websocket_healthy:
+            self.websocket_healthy = True
+            logger.info("✓ WebSocket connection verified - receiving real-time data")
         logger.debug(f"Price update: {market_id} | UP: ${yes_price:.3f} | DOWN: ${no_price:.3f}")
 
     def get_btc_15min_markets(self) -> List[Market]:
@@ -108,6 +121,14 @@ class BTC15MinBot:
         if not markets:
             logger.warning("No markets to trade")
             return 0
+
+        # Enrich markets with orderbook data from WebSocket
+        if self.ws_client:
+            for market in markets:
+                orderbook = self.ws_client.get_orderbook(market.id)
+                if orderbook:
+                    market.orderbook = orderbook
+                    logger.debug(f"Enriched {market.id} with orderbook data")
 
         # Show current positions
         if self.position_tracker.get_all_positions():
@@ -218,11 +239,56 @@ class BTC15MinBot:
         """Run the bot continuously"""
         logger.info("Starting BTC 15-Min Trading Bot...")
 
-        # Start WebSocket client for real-time updates
+        # Start WebSocket client for real-time updates (Option 1)
         if self.ws_client:
-            logger.info("Starting WebSocket client for real-time price updates...")
-            self.ws_client.connect()
-            time.sleep(2)  # Give WebSocket time to connect
+            logger.info("Attempting WebSocket connection (Option 1: Public WebSocket)...")
+            logger.info(f"Will fallback to REST API (Option 3) if no data received within {self.websocket_timeout}s")
+
+            try:
+                self.ws_client.connect()
+                time.sleep(2)  # Give WebSocket time to establish connection
+
+                # Get a test market to subscribe and verify WebSocket is working
+                logger.info("Testing WebSocket with initial market subscription...")
+                test_markets = self.get_btc_15min_markets()
+                if test_markets:
+                    for market in test_markets:
+                        self.ws_client.subscribe(market.id)
+
+                    # Wait for WebSocket to receive data
+                    logger.info(f"Waiting {self.websocket_timeout}s for WebSocket data...")
+                    time.sleep(self.websocket_timeout)
+
+                    if self.websocket_healthy:
+                        logger.info("✓ WebSocket is healthy - using real-time data stream")
+                    else:
+                        logger.warning("✗ WebSocket timeout - no data received")
+                        logger.warning("Falling back to REST API polling (Option 3)")
+                        self.ws_client.stop()
+                        self.ws_client = None
+                        self.use_websocket = False
+                else:
+                    logger.warning("No markets available for WebSocket test, using REST API")
+                    self.ws_client.stop()
+                    self.ws_client = None
+                    self.use_websocket = False
+
+            except Exception as e:
+                logger.error(f"WebSocket connection failed: {e}")
+                logger.warning("Falling back to REST API polling (Option 3)")
+                if self.ws_client:
+                    try:
+                        self.ws_client.stop()
+                    except:
+                        pass
+                    self.ws_client = None
+                self.use_websocket = False
+
+        # Log the final data source
+        if self.use_websocket and self.websocket_healthy:
+            logger.info("Data Source: WebSocket (real-time)")
+        else:
+            logger.info("Data Source: REST API (30-second polling)")
 
         try:
             while True:
@@ -308,7 +374,7 @@ def main():
     bot = BTC15MinBot(
         client=client,
         strategies=strategies,
-        check_interval=30,  # Check every 30 seconds
+        check_interval=5,  # Check every 30 seconds
         dry_run=Config.DRY_RUN,
         max_markets=4  # Track next 4 markets
     )

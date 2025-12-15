@@ -99,9 +99,64 @@ class MeanReversionStrategy(BaseStrategy):
         logger.info(f"  - Extreme threshold: {extreme_threshold:.2f}")
 
     def analyze(self, markets: List[Market], positions: Optional[List] = None) -> List[TradeSignal]:
-        """Fade extreme prices"""
+        """Fade extreme prices and manage existing positions"""
         signals = []
 
+        # First, check existing positions for SELL opportunities
+        if positions:
+            for position in positions:
+                # Find the market for this position
+                market = next((m for m in markets if m.id == position.market_id), None)
+                if not market or not market.active:
+                    continue
+
+                up_price = market.yes_price
+                down_price = market.no_price
+
+                # Determine current price based on position side
+                current_price = up_price if position.side == "YES" else down_price
+
+                # Calculate P/L
+                pnl_percent = (current_price - position.entry_price) / position.entry_price
+
+                # SELL conditions
+                should_sell = False
+                sell_reason = ""
+
+                # 1. Profit taking: >15% gain
+                if pnl_percent > 0.15:
+                    should_sell = True
+                    sell_reason = f"Profit taking: {pnl_percent*100:.1f}% gain (entry ${position.entry_price:.3f} -> now ${current_price:.3f})"
+
+                # 2. Stop loss: >10% loss
+                elif pnl_percent < -0.10:
+                    should_sell = True
+                    sell_reason = f"Stop loss: {pnl_percent*100:.1f}% loss (entry ${position.entry_price:.3f} -> now ${current_price:.3f})"
+
+                # 3. Mean reversion occurred - opposite side now extreme
+                elif position.side == "YES" and down_price > self.extreme_threshold:
+                    # We're holding UP, but DOWN is now overpriced (UP has reverted down)
+                    should_sell = True
+                    sell_reason = f"Mean reversion complete: UP reverted down, DOWN now overpriced at {down_price:.3f}"
+
+                elif position.side == "NO" and up_price > self.extreme_threshold:
+                    # We're holding DOWN, but UP is now overpriced (DOWN has reverted down)
+                    should_sell = True
+                    sell_reason = f"Mean reversion complete: DOWN reverted down, UP now overpriced at {up_price:.3f}"
+
+                if should_sell:
+                    trade = Trade(
+                        market_id=market.id,
+                        question=market.question,
+                        side=position.side,
+                        amount=position.shares,
+                        price=current_price,
+                        reason=sell_reason,
+                        action="SELL"
+                    )
+                    signals.append(TradeSignal(trade=trade, market=market))
+
+        # Then, look for new BUY opportunities
         for market in markets:
             if not market.active:
                 continue
@@ -365,9 +420,36 @@ class TimeBasedStrategy(BaseStrategy):
         logger.info(f"  - Min edge: ${min_edge:.3f}")
 
     def analyze(self, markets: List[Market], positions: Optional[List] = None) -> List[TradeSignal]:
-        """Aggressive trading near market close"""
+        """Aggressive trading near market close, close positions very close to expiry"""
         signals = []
 
+        # First, check if we need to close positions (within 2 minutes of close)
+        if positions:
+            for position in positions:
+                market = next((m for m in markets if m.id == position.market_id), None)
+                if not market or not market.active:
+                    continue
+
+                time_until_close = market.time_until_close() * 60  # minutes
+
+                # Close position if very close to expiry (2 minutes or less)
+                if time_until_close <= 2.0:
+                    up_price = market.yes_price
+                    down_price = market.no_price
+                    current_price = up_price if position.side == "YES" else down_price
+
+                    trade = Trade(
+                        market_id=market.id,
+                        question=market.question,
+                        side=position.side,
+                        amount=position.shares,
+                        price=current_price,
+                        reason=f"Time exit: {time_until_close:.1f}min to close, realizing position",
+                        action="SELL"
+                    )
+                    signals.append(TradeSignal(trade=trade, market=market))
+
+        # Then, look for new positions
         for market in markets:
             if not market.active:
                 continue
